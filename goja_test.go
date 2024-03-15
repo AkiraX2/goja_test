@@ -474,7 +474,7 @@ func TestRunJs(t *testing.T) {
 
 		assert.Panics(t, func() {
 			RunString(nil, `
-			const process = require('node:process');
+			const process = require('process');
 			process.on('exit', (code) => {
 
 			});
@@ -1632,6 +1632,25 @@ func TestCallJsFunc(t *testing.T) {
 
 		assert.Equal(t, sum(40, 2), 42)
 	})
+}
+
+func Sum(a, b int) int {
+	return a + b
+}
+func TestCallGoFuncFromJs(t *testing.T) {
+
+	vm, _ := newVMWithAssert()
+	vm.Set("Sum", Sum)
+	_, err := RunString(vm, `
+		var res = Sum(40, 2);
+
+		assertTrue(res == 42);
+	`)
+
+	if err != nil {
+		t.Fatal(err)
+	}
+
 }
 
 func TestInterrupt(t *testing.T) {
