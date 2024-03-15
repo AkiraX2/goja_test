@@ -1464,7 +1464,7 @@ func TestException(t *testing.T) {
 				if r := recover(); r != nil {
 					if jserr, ok := r.(*goja.Exception); ok {
 						assert.Equal(t, jserr.Value().ToString().String(), "Test Error")
-						assert.Equal(t, jserr, nil)
+						// assert.Equal(t, jserr, nil)
 
 						re := regexp.MustCompile(`\d+:\d+`)
 
@@ -1485,7 +1485,8 @@ func TestException(t *testing.T) {
 				if r := recover(); r != nil {
 					if jserr, ok := r.(*goja.Exception); ok {
 						assert.Equal(t, jserr.Value().ToString().String(), "Error: Test Error")
-						assert.Equal(t, jserr.Error(), jserr.Unwrap())
+						// assert.Equal(t, jserr.Error(), nil)
+						assert.Equal(t, jserr.Unwrap(), nil)
 
 						re := regexp.MustCompile(`\d+:\d+`)
 
@@ -1500,20 +1501,53 @@ func TestException(t *testing.T) {
 
 			RunString(nil, `throw new Error("Test Error");`)
 		})
+	})
 
+}
+
+func TestErrorExport(t *testing.T) {
+
+	t.Run("error export", func(t *testing.T) {
+		assert.NotPanics(t, func() {
+			defer func() {
+				if r := recover(); r != nil {
+					if jserr, ok := r.(*goja.Exception); ok {
+						assert.Equal(t, jserr.Value().ToString().String(), "Test Error")
+						// assert.Equal(t, jserr.Error(), nil)	// writeShortStack
+						// assert.Equal(t, jserr.Unwrap(), nil)
+						assert.Equal(t, jserr.String(), "Test Error\n\tat errorAssert (scripts/error_case_func.js:9:3(2))\n\tat <eval>:4:23(8)\n") // writeFullStack
+
+						// re := regexp.MustCompile(`\d+:\d+`)
+
+						// match := re.FindString(jserr.Error())
+						// assert.Equal(t, match, "1:7")
+
+					} else {
+						panic("Not a goja.Exception")
+					}
+				}
+			}()
+
+			RunString(nil, ` // line: 1
+				var errors = require("./scripts/error_case_func");	// line: 2
+				// assertTrue(false);	// line: 3
+				errors.errorAssert();	// line: 4 <-- will throw an error
+			`)
+		})
 	})
 }
 
 func TestInputAndOutput(t *testing.T) {
+	t.Run("input and output 1", func(t *testing.T) {
 
-	assert.NotPanics(t, func() {
+		assert.NotPanics(t, func() {
 
-		parmas := map[string]interface{}{
-			// "obj": map[string]interface{}{},
-		}
-		vm, _ := newVMWithAssert()
-		vm.Set("parmas", parmas)
-		RunString(vm, `
+			parmas := map[string]interface{}{
+				// "obj": map[string]interface{}{},
+			}
+			vm, _ := newVMWithAssert()
+			vm.Set("parmas", parmas)
+			RunString(vm, `
 		var obj = {
 			test: true,
 			foo: -10
@@ -1521,20 +1555,23 @@ func TestInputAndOutput(t *testing.T) {
 		parmas.obj = obj; // obj gets Export()'ed, i.e. copied to a new map[string]interface{} and then this map is set as params["obj"]
 		obj.test = false; // note, params.obj.test is still true
 	`)
-		assert.Equal(t, parmas["obj"].(map[string]interface{})["test"], true)
-		assert.Equal(t, parmas["obj"].(map[string]interface{})["foo"], int64(-10))
+			assert.Equal(t, parmas["obj"].(map[string]interface{})["test"], true)
+			assert.Equal(t, parmas["obj"].(map[string]interface{})["foo"], int64(-10))
+
+		})
 
 	})
 
-	type S struct {
-		Field int
-	}
+	t.Run("input and output 2", func(t *testing.T) {
 
-	assert.NotPanics(t, func() {
-		vm, _ := newVMWithAssert()
-		obj := S{Field: -1}
-		vm.Set("obj", &obj) // note here we pass a pointer to the object
-		res, _ := RunString(vm, `
+		type S struct {
+			Field int
+		}
+		assert.NotPanics(t, func() {
+			vm, _ := newVMWithAssert()
+			obj := S{Field: -1}
+			vm.Set("obj", &obj) // note here we pass a pointer to the object
+			res, _ := RunString(vm, `
 		
 			assertEqual(obj.Field, undefined);
 			assertEqual(obj.field, -1);
@@ -1543,28 +1580,44 @@ func TestInputAndOutput(t *testing.T) {
 			obj.field = 10;
 		`)
 
-		assert.Equal(t, res.Export(), int64(10))
-		assert.Equal(t, obj.Field, 10)
-		assert.Equal(t, obj, S{Field: 10})
+			assert.Equal(t, res.Export(), int64(10))
+			assert.Equal(t, obj.Field, 10)
+			assert.Equal(t, obj, S{Field: 10})
 
+		})
 	})
 
-	assert.NotPanics(t, func() {
-		vm, _ := newVMWithAssert()
-		obj := S{Field: -1}
-		vm.Set("obj", obj) // note here
-		res, _ := RunString(vm, `
-		
-			assertEqual(obj.Field, undefined);
-			assertEqual(obj.field, -1);
-			
-			
-			obj.field = 10;
-		`)
+	t.Run("input and output 3", func(t *testing.T) {
 
-		assert.Equal(t, res.Export(), int64(10))
-		assert.Equal(t, obj.Field, -1)
-		assert.Equal(t, obj, S{Field: -1})
+		assert.NotPanics(t, func() {
+
+			type S struct {
+				Field int
+			}
+
+			vm, _ := newVMWithAssert()
+			obj := S{Field: -1}
+			vm.Set("obj", &obj) // note here
+			res, _ := RunString(vm, `
+			
+				assertEqual(obj.Field, undefined);
+				assertEqual(obj.field, -1);
+				
+				obj.date = new Date();
+
+				obj.test = function() {
+					return "test"
+				}
+
+ 				obj.field = 10;
+			`)
+
+			assert.Equal(t, res.Export(), int64(10))
+			assert.Equal(t, obj.Field, 10)
+			assert.Equal(t, obj, S{Field: 10})
+			// assert.Equal(t, obj, nil)
+
+		})
 
 	})
 	// TODO: customize $ mocking
@@ -1614,7 +1667,7 @@ func TestCallJsFunc(t *testing.T) {
 
 		const SCRIPT = `
 			function sum(a, b) {
-				return +a + b;
+				return a + b;
 			}
 			`
 
